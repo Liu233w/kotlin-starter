@@ -16,7 +16,7 @@ fun main(args: Array<String>) {
 
         val res = callCC<String> {
             continuation = it
-            it.multiShotResume("inner")
+            "inner"
         }
 
         println(res + (++i))
@@ -26,6 +26,8 @@ fun main(args: Array<String>) {
     cont.multiShotResume("b")
     cont.multiShotResume("c")
 
-    Thread.sleep(5000)
+    cont.multiShotResume("c")
+
+    Thread.sleep(1000)
 }
 

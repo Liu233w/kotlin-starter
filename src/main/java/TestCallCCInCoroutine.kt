@@ -22,6 +22,7 @@ fun main(args: Array<String>) {
             println("start $i")
             val res = callCC<String> {
                 conts.add(it)
+                ""
             }
             println("end $i")
 

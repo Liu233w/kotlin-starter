@@ -32,20 +32,17 @@ fun <T> continuationBarrier(block: suspend () -> T): T {
     return res!!
 }
 
-suspend inline fun <T> callCC(crossinline block: (Continuation<T>) -> Unit): T {
+suspend inline fun <reified T> callCC(crossinline block: (Continuation<T>) -> T): T {
+
     return suspendCoroutineOrReturn {
-        block(it)
-        COROUTINE_SUSPENDED
+        return@suspendCoroutineOrReturn block(it)
     }
 }
 
-suspend inline fun CC(): Continuation<Unit> {
-    var cont: Continuation<Unit>? = null
-    callCC<Unit> {
-        cont = it
-        cont!!.multiShotResume(Unit)
-    }
-    return cont!!
+suspend inline fun getCurrentContinuation(): Continuation<Any> {
+    return callCC<Any> {
+        return@callCC it
+    } as Continuation<Any>
 }
 
 fun <T> Continuation<T>.multiShotResume(it: T) {

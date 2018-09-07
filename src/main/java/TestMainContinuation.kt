@@ -1,7 +1,14 @@
-import sub.CC
+import sub.getCurrentContinuation
 import sub.continuationBarrier
+import sub.multiShotResume
 
 fun main(args: Array<String>) = continuationBarrier {
 
-    CC()
+    val yin = getCurrentContinuation()
+    print("@")
+    Thread.sleep(1000)
+    val yang = getCurrentContinuation()
+    print("*")
+    Thread.sleep(1000)
+    yin.multiShotResume(yang)
 }
