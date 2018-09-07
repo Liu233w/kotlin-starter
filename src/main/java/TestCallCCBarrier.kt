@@ -9,7 +9,7 @@ fun main(args: Array<String>) {
 
     println("start")
 
-    continuationBarrier {
+    val res = continuationBarrier {
         println("a")
 
         var i = 0
@@ -20,7 +20,11 @@ fun main(args: Array<String>) {
         }
 
         println(res + (++i))
+
+        return@continuationBarrier res
     }
+
+    println(res)
 
     val cont = continuation!!
     cont.multiShotResume("b")
