@@ -1,22 +1,13 @@
 package solution
 
-import java.lang.IllegalStateException
 import java.util.Optional
 import kotlin.coroutines.experimental.*
-import kotlin.coroutines.experimental.intrinsics.suspendCoroutineOrReturn
 
-fun <T> `for`(lambda: Continuation<Optional<T>>.() -> Unit): Optional<T> {
+fun <T> `for`(lambda: suspend () -> Optional<T>): Optional<T> {
 
-    val block = suspend {
-        suspendCoroutine<Optional<T>> {
-            it.lambda()
-        }
-    }
+    var res: Optional<T> = Optional.empty()
 
-    var res: Optional<T>? = null
-    var err: Throwable? = null
-
-    block.startCoroutine(completion = object : Continuation<Optional<T>> {
+    lambda.startCoroutine(completion = object : Continuation<Optional<T>> {
         override val context: CoroutineContext
             get() = EmptyCoroutineContext
 
@@ -25,27 +16,22 @@ fun <T> `for`(lambda: Continuation<Optional<T>>.() -> Unit): Optional<T> {
         }
 
         override fun resumeWithException(exception: Throwable) {
-            err = exception
+            throw exception
         }
 
     })
 
-    if (err != null) {
-        throw err!!
-    }
-    return res!!
+    return res
 }
 
 // you can change this implemention as you wish
-fun <T> Continuation<Optional<T>>.yield(value: T) {
-    this.resume(Optional.of(value))
-}
+fun <T> yield(value: T) = Optional.of(value)
 
-fun <T> Continuation<Optional<T>>.bind(o: Optional<T>): T {
+suspend fun <T> bind(o: Optional<T>): T {
     if (o.isPresent) {
         return o.get()
     } else {
-        this.resume(Optional.empty())
-        throw IllegalStateException("Cannot reach there")
+        // jump out of `for`
+        suspendCoroutine { }
     }
 }
