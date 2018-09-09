@@ -13,7 +13,7 @@ fun main(args: Array<String>) = continuationBarrierMain {
 }
 
 // 返回类型可能是 continuation<Unit>, continuation<continuation<Unit>>, continuation<...>
-suspend inline fun cc(): Continuation<Any> {
+suspend inline fun CallCcContext.cc(): Continuation<Any> {
     val ccOrResult = getCcOrResult<Continuation<Any>>()
     return when (ccOrResult) {
         is ContinuationWrapper.Cont<*> -> ccOrResult.continuation

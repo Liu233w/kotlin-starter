@@ -1,15 +1,13 @@
 package sub
 
 import java.util.*
-import kotlin.coroutines.experimental.Continuation
-import kotlin.coroutines.experimental.CoroutineContext
-import kotlin.coroutines.experimental.EmptyCoroutineContext
-import kotlin.coroutines.experimental.intrinsics.suspendCoroutineOrReturn
-import kotlin.coroutines.experimental.startCoroutine
+import kotlin.coroutines.experimental.*
+import kotlin.coroutines.experimental.intrinsics.*
 
-inline fun <T> continuationBarrier(noinline block: suspend () -> T): Optional<T> {
+fun <T> continuationBarrier(block: suspend CallCcContext.() -> T): Optional<T> {
 
     var res: Optional<T> = Optional.empty()
+    val context = CallCcContext()
 
     block.startCoroutine(completion = object : Continuation<T> {
         override val context: CoroutineContext
@@ -23,14 +21,45 @@ inline fun <T> continuationBarrier(noinline block: suspend () -> T): Optional<T>
             throw exception
         }
 
-    })
+    }, receiver = context)
+
+    while (context.needToBeContinuedBy.isPresent) {
+        val cont = context.needToBeContinuedBy.get()
+        context.needToBeContinuedBy = Optional.empty()
+        cont.multiShotResume(ContinuationWrapper.Cont(cont))
+    }
 
     return res
 }
 
-inline fun continuationBarrierMain(noinline block: suspend () -> Unit): Unit {
+inline fun continuationBarrierMain(noinline block: suspend CallCcContext.() -> Unit) {
     continuationBarrier {
         block()
+    }
+}
+
+@RestrictsSuspension
+class CallCcContext {
+
+    internal var needToBeContinuedBy: Optional<Continuation<Any>> = Optional.empty()
+
+    /**
+     * 获取当前的续延；如果是 resume 了一个续延导致控制流跳转到了这里的话，则获取 resume 的值
+     *
+     * 注意：resume的结果不能是一个 ContinuationWrapper !
+     */
+    suspend fun <T> getCcOrResult(): ContinuationWrapper<T> {
+
+        val contOrResult = suspendCoroutineOrReturn<Any> {
+            this.needToBeContinuedBy = Optional.of(it)
+            // 先挂起协程，才能拷贝调用栈
+            COROUTINE_SUSPENDED
+        }
+
+        return when (contOrResult) {
+            is ContinuationWrapper<*> -> contOrResult as ContinuationWrapper.Cont<T>
+            else -> ContinuationWrapper.Value(contOrResult as T)
+        }
     }
 }
 
@@ -39,7 +68,7 @@ inline fun continuationBarrierMain(noinline block: suspend () -> Unit): Unit {
  *
  * 注意：resume的结果不能是一个 ContinuationWrapper !
  */
-suspend inline fun <T> callCC(block: suspend (Continuation<T>) -> T): T {
+suspend inline fun <T> CallCcContext.callCC(block: suspend CallCcContext.(Continuation<T>) -> T): T {
 
     val ccOrResult = getCcOrResult<T>()
 
@@ -48,23 +77,6 @@ suspend inline fun <T> callCC(block: suspend (Continuation<T>) -> T): T {
             block(ccOrResult.continuation)
         }
         is ContinuationWrapper.Value<T> -> ccOrResult.value
-    }
-}
-
-/**
- * 获取当前的续延；如果是 resume 了一个续延导致控制流跳转到了这里的话，则获取 resume 的值
- *
- * 注意：resume的结果不能是一个 ContinuationWrapper !
- */
-suspend inline fun <T> getCcOrResult(): ContinuationWrapper<T> {
-
-    val contOrResult = suspendCoroutineOrReturn<Any> {
-        ContinuationWrapper.Cont(it)
-    }
-
-    return when (contOrResult) {
-        is ContinuationWrapper<*> -> contOrResult as ContinuationWrapper.Cont<T>
-        else -> ContinuationWrapper.Value(contOrResult as T)
     }
 }
 
