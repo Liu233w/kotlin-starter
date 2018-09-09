@@ -1,34 +1,37 @@
 package sub
 
+import java.util.*
 import kotlin.coroutines.experimental.Continuation
 import kotlin.coroutines.experimental.CoroutineContext
 import kotlin.coroutines.experimental.EmptyCoroutineContext
 import kotlin.coroutines.experimental.intrinsics.suspendCoroutineOrReturn
 import kotlin.coroutines.experimental.startCoroutine
 
-fun <T> continuationBarrier(block: suspend () -> T): T {
+inline fun <T> continuationBarrier(noinline block: suspend () -> T): Optional<T> {
 
-    var res: T? = null
-    var err: Throwable? = null
+    var res: Optional<T> = Optional.empty()
 
     block.startCoroutine(completion = object : Continuation<T> {
         override val context: CoroutineContext
             get() = EmptyCoroutineContext
 
         override fun resume(value: T) {
-            res = value
+            res = Optional.of(value)
         }
 
         override fun resumeWithException(exception: Throwable) {
-            err = exception
+            throw exception
         }
 
     })
 
-    if (err != null) {
-        throw err!!
+    return res
+}
+
+inline fun continuationBarrierMain(noinline block: suspend () -> Unit): Unit {
+    continuationBarrier {
+        block()
     }
-    return res!!
 }
 
 suspend inline fun <reified T> callCC(crossinline block: (Continuation<T>) -> T): T {
@@ -36,12 +39,6 @@ suspend inline fun <reified T> callCC(crossinline block: (Continuation<T>) -> T)
     return suspendCoroutineOrReturn {
         return@suspendCoroutineOrReturn block(it)
     }
-}
-
-suspend inline fun getCurrentContinuation(): Continuation<Any> {
-    return callCC<Any> {
-        return@callCC it
-    } as Continuation<Any>
 }
 
 fun <T> Continuation<T>.multiShotResume(it: T) {

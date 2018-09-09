@@ -1,8 +1,9 @@
-import sub.getCurrentContinuation
-import sub.continuationBarrier
+import sub.callCC
+import sub.continuationBarrierMain
 import sub.multiShotResume
+import kotlin.coroutines.experimental.Continuation
 
-fun main(args: Array<String>) = continuationBarrier {
+fun main(args: Array<String>) = continuationBarrierMain {
 
     val yin = getCurrentContinuation()
     print("@")
@@ -12,3 +13,10 @@ fun main(args: Array<String>) = continuationBarrier {
     Thread.sleep(1000)
     yin.multiShotResume(yang)
 }
+
+suspend inline fun getCurrentContinuation(): Continuation<Any> {
+    return callCC<Any> {
+        return@callCC it
+    } as Continuation<Any>
+}
+
