@@ -4,7 +4,7 @@ import java.util.*
 import kotlin.coroutines.experimental.*
 import kotlin.coroutines.experimental.intrinsics.*
 
-fun <T> continuationBarrier(block: suspend CallCcContext.() -> T): Optional<T> {
+fun <T> continuationBarrier(block: suspend CallCcContext.() -> T): T {
 
     var res: Optional<T> = Optional.empty()
     val context = CallCcContext()
@@ -23,13 +23,22 @@ fun <T> continuationBarrier(block: suspend CallCcContext.() -> T): Optional<T> {
 
     }, receiver = context)
 
-    while (context.needToBeContinuedBy.isPresent) {
+    while (!res.isPresent) {
+        // BUG: 这里有两种可能，有可能是从 suspendOrReturn 退出到这里的，那就是 resume 一个 ContinuationWrapper
+        //  否则是从 continuation 里 resume 到这里的，就应该 resume 一个 value，然后根据 value 的值来决定是 resume 那个
+        //  字段还是 Unit
         val cont = context.needToBeContinuedBy.get()
         context.needToBeContinuedBy = Optional.empty()
-        cont.multiShotResume(ContinuationWrapper.Cont(cont))
+        if (context.resumedValue.isPresent) {
+            val value = context.resumedValue.get()
+            context.resumedValue = Optional.empty()
+            clone(cont).resume(value)
+        } else {
+            clone(cont).resume(Unit)
+        }
     }
 
-    return res
+    return res.get()
 }
 
 inline fun continuationBarrierMain(noinline block: suspend CallCcContext.() -> Unit) {
@@ -42,6 +51,7 @@ inline fun continuationBarrierMain(noinline block: suspend CallCcContext.() -> U
 class CallCcContext {
 
     internal var needToBeContinuedBy: Optional<Continuation<Any>> = Optional.empty()
+    internal var resumedValue: Optional<Any> = Optional.empty()
 
     /**
      * 获取当前的续延；如果是 resume 了一个续延导致控制流跳转到了这里的话，则获取 resume 的值
@@ -52,6 +62,7 @@ class CallCcContext {
 
         val contOrResult = suspendCoroutineOrReturn<Any> {
             this.needToBeContinuedBy = Optional.of(it)
+            this.resumedValue = Optional.empty()
             // 先挂起协程，才能拷贝调用栈
             COROUTINE_SUSPENDED
         }
@@ -60,6 +71,22 @@ class CallCcContext {
             is ContinuationWrapper<*> -> contOrResult as ContinuationWrapper.Cont<T>
             else -> ContinuationWrapper.Value(contOrResult as T)
         }
+    }
+
+    override fun toString(): String {
+        return "CallCcContext"
+    }
+
+    suspend fun <T> resume(cont: Continuation<T>, value: T) {
+        needToBeContinuedBy = Optional.of(cont as Continuation<Any>)
+        resumedValue = Optional.of(value as Any)
+        suspendCoroutineOrReturn<Unit> {
+            COROUTINE_SUSPENDED
+        }
+    }
+
+    suspend fun resume(cont: Continuation<Unit>) {
+        resume(cont, Unit)
     }
 }
 
@@ -83,10 +110,6 @@ suspend inline fun <T> CallCcContext.callCC(block: suspend CallCcContext.(Contin
 sealed class ContinuationWrapper<T>() {
     class Cont<T>(val continuation: Continuation<T>) : ContinuationWrapper<T>()
     class Value<T>(val value: T) : ContinuationWrapper<T>()
-}
-
-fun <T> Continuation<T>.multiShotResume(it: T) {
-    clone(this).resume(it)
 }
 
 private val UNSAFE = Class.forName("sun.misc.Unsafe")

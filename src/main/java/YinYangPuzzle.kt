@@ -4,12 +4,12 @@ import kotlin.coroutines.experimental.Continuation
 fun main(args: Array<String>) = continuationBarrierMain {
 
     val yin = cc()
-    print("@")
+    print("@$yin")
     Thread.sleep(1000)
     val yang = cc()
-    print("*")
+    print("*$yang")
     Thread.sleep(1000)
-    yin.multiShotResume(yang)
+//    yin.multiShotResume(yang)
 }
 
 // 返回类型可能是 continuation<Unit>, continuation<continuation<Unit>>, continuation<...>
