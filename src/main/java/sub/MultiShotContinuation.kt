@@ -34,11 +34,43 @@ inline fun continuationBarrierMain(noinline block: suspend () -> Unit): Unit {
     }
 }
 
-suspend inline fun <reified T> callCC(crossinline block: (Continuation<T>) -> T): T {
+/**
+ * 跟 scheme 的 callCC 类似，如果在 block 之内 resume 的话，resume之后的代码不应该被执行
+ *
+ * 注意：resume的结果不能是一个 ContinuationWrapper !
+ */
+suspend inline fun <T> callCC(block: suspend (Continuation<T>) -> T): T {
 
-    return suspendCoroutineOrReturn {
-        return@suspendCoroutineOrReturn block(it)
+    val ccOrResult = getCcOrResult<T>()
+
+    return when (ccOrResult) {
+        is ContinuationWrapper.Cont<T> -> {
+            block(ccOrResult.continuation)
+        }
+        is ContinuationWrapper.Value<T> -> ccOrResult.value
     }
+}
+
+/**
+ * 获取当前的续延；如果是 resume 了一个续延导致控制流跳转到了这里的话，则获取 resume 的值
+ *
+ * 注意：resume的结果不能是一个 ContinuationWrapper !
+ */
+suspend inline fun <T> getCcOrResult(): ContinuationWrapper<T> {
+
+    val contOrResult = suspendCoroutineOrReturn<Any> {
+        ContinuationWrapper.Cont(it)
+    }
+
+    return when (contOrResult) {
+        is ContinuationWrapper<*> -> contOrResult as ContinuationWrapper.Cont<T>
+        else -> ContinuationWrapper.Value(contOrResult as T)
+    }
+}
+
+sealed class ContinuationWrapper<T>() {
+    class Cont<T>(val continuation: Continuation<T>) : ContinuationWrapper<T>()
+    class Value<T>(val value: T) : ContinuationWrapper<T>()
 }
 
 fun <T> Continuation<T>.multiShotResume(it: T) {
